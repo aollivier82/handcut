@@ -98,7 +98,29 @@ export class Player {
     return { seg: n.segs[0], key: n.id + ':0', gap: n.at - end };
   }
 
+  /** Let go of every preview video so the exporter can have the headset's decoders. */
+  suspend() {
+    this.suspended = true;
+    for (const t of this.tracks) {
+      for (const slot of [t.cur, t.next]) {
+        slot.el.pause();
+        slot.el.removeAttribute('src');
+        slot.el.load();
+        slot.srcId = null;
+        slot.key = null;
+        slot.target = null;
+        slot.failed = false;
+      }
+      t.key = null;
+    }
+    this.bands = [];
+  }
+  resume() {
+    this.suspended = false;
+  }
+
   update(dtMs, now) {
+    if (this.suspended) return;
     const ed = this.editor;
     const playing = ed.playing;
     const frame = playing ? ed.time : ed.viewFrame();

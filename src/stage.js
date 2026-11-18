@@ -1049,11 +1049,12 @@ export class Stage {
     // ---- hint line and the tag that follows a trim
     let hint = '';
     let dim = false;
-    if (now < this.noticeUntil) hint = this.noticeText;
-    else if (this.exportState.busy) hint = 'Exporting… ' + Math.round(this.exportState.progress * 100) + '%';
-    else if (this.mergeFx) hint = this.mergeFx.progress > 0 ? 'Hold them together…' : 'Touch the two pills together to merge';
+    // what the hands are doing right now outranks a message about what just happened
+    if (this.mergeFx) hint = this.mergeFx.progress > 0 ? 'Hold them together…' : 'Touch the two pills together to merge';
     else if (ed.trim) hint = ed.trim.limit === 'start' ? 'That is the start of the recording' : ed.trim.limit === 'end' ? 'That is the end of the recording' : ed.trim.limit ? 'It cannot get shorter than this' : 'Let go to keep this length';
     else if (ed.held.size) hint = ed.drop ? 'Let go to drop it here' : 'Carry it to a track';
+    else if (now < this.noticeUntil) hint = this.noticeText;
+    else if (this.exportState.busy) hint = 'Exporting… ' + Math.round(this.exportState.progress * 100) + '%';
     else {
       dim = true;
       if (!ed.duration()) hint = 'Tap a recording in the library to begin';
@@ -1165,7 +1166,7 @@ export class Stage {
     }
     const empty = n === 0;
     this.idle.mesh.visible = this.idleSub.mesh.visible = empty && !ed.playing;
-    this.idleSub.set(d ? 'Nothing under the line here' : 'Bring a recording to a track');
+    this.idleSub.set(ex.busy ? 'Exporting your video…' : d ? 'Nothing under the line here' : 'Bring a recording to a track');
     if (this.flashT > 0) {
       this.flashT = Math.max(0, this.flashT - dt * 6);
       this.flash.visible = this.flashT > 0;

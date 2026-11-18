@@ -193,6 +193,7 @@ async function boot() {
     exportJob = ctl;
     const sig = signature();
     stage.exportState = { busy: true, progress: 0, ready: false };
+    player.suspend();
     try {
       const { exportProject } = await import('./export.js');
       const out = await exportProject({
@@ -224,6 +225,7 @@ async function boot() {
       }
     } finally {
       exportJob = null;
+      player.resume();
     }
   }
 

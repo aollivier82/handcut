@@ -67,6 +67,7 @@ if (!interact.__sim) {
   };
   interact.__sim = true;
 }
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const frames = (n = 1) => new Promise((go) => waiters.push({ at: frame + n, go }) && waiters.sort((a, b) => a.at - b.at));
 
 const benchPt = (x, y, z) => V(x, y, z).applyMatrix4(stage.bench.matrix);
@@ -183,7 +184,7 @@ export async function tChop() {
   // select the pill under the line, then chop
   const c = lane(0).find((k) => k.at < ed.time && clipEnd(k) > ed.time);
   ed.select(c.id);
-  await frames(20);
+  await sleep(650);
   const at = Math.round(ed.time);
   await chop('right');
   const cut = lane(0).length === n0 + 1 && lane(0).some((k) => k.at === at);
@@ -191,7 +192,7 @@ export async function tChop() {
   ed.seek(ed.time + 30);
   const c2 = lane(0).find((k) => k.at < ed.time && clipEnd(k) > ed.time);
   ed.select(c2.id);
-  await frames(20);
+  await sleep(650);
   const at2 = Math.round(ed.time);
   const st = { open: true, normal: benchDir(1, 0, 0) };
   await hold('left', benchPt(0.03, y + 0.14, 0.01), 3, st);
@@ -203,7 +204,7 @@ export async function tChop() {
   ed.seek(ed.time + 20);
   const c3 = lane(0).find((k) => k.at < ed.time && clipEnd(k) > ed.time);
   ed.select(c3.id);
-  await frames(20);
+  await sleep(650);
   const flat = { open: true, normal: benchDir(0, 1, 0) };
   await hold('right', benchPt(0, y + 0.14, 0.004), 3, flat);
   await glide('right', benchPt(0, y + 0.14, 0.004), benchPt(0, y - 0.1, 0.004), 7, flat);
@@ -211,6 +212,7 @@ export async function tChop() {
   await frames(3);
   const noFlat = lane(0).length === n0 + 2;
   // slow hand passing down in front of the bench (reaching for the console) must not cut
+  await sleep(600);
   await hold('right', benchPt(0, y + 0.14, 0.11), 3, st);
   await glide('right', benchPt(0, y + 0.14, 0.11), benchPt(0, y - 0.1, 0.11), 7, st);
   drop('right');
@@ -245,6 +247,7 @@ export async function tTrim() {
   check('right handle: +4.5 cm adds 30 frames, left edge fixed, neighbour pushed', grew === 30 && a2.at === 0 && lane(0)[1].at === bAt + 30, 'grew ' + grew + ' | ' + spans(0));
 
   // left handle of the second pill (attached to the first): right edge must stay put on screen
+  await sleep(700); // let the pushed pill finish easing into place
   const b2 = lane(0)[1];
   v = stage.pills.get(b2.id);
   const rightEdge = v.x + v.lenM / 2;
@@ -267,6 +270,7 @@ export async function tTrim() {
   check('left handle: out point unchanged, 20 frames trimmed, no gap', b3.segs[0].out === outBefore && clipLen(b3) === clipLen(b2) && b3.at === clipEnd(lane(0)[0]), spans(0) + ' in=' + b3.segs[0].in);
 
   // pull far past the end of the footage: stops, and says why
+  await sleep(700);
   v = stage.pills.get(a.id);
   const e1 = v.x + v.lenM / 2;
   const r0 = benchPt(e1 - 0.006, v.y, 0.012);
