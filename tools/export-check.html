@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Handcut export check</title>
+<link rel="icon" href="data:,">
+<style>
+	body { font: 14px/1.5 ui-monospace, Consolas, monospace; margin: 24px; background: #111; color: #ddd; }
+	pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Handcut export check</h1>
+<p>Driven by <code>node tools/export-check.mjs</code>. Each export runs in this page; the script pulls the files out.</p>
+<pre id="log"></pre>
+<script type="module">
+import { canEncodeAudio, canEncodeVideo } from 'mediabunny';
+
+const query = new URLSearchParams(location.search);
+
+// ?deny=aac,avc,vp9 makes this browser report those encoders as missing, so that the fallbacks a headset may need
+// (the WebAssembly AAC encoder, WebM) can be exercised on a PC that has everything
+const denied = (query.get('deny') ?? '').split(',').filter(Boolean);
+const prefixes = { avc: 'avc', vp9: 'vp09', vp8: 'vp8', aac: 'mp4a', opus: 'opus' };
+const deny = (Encoder) => {
+	const original = Encoder.isConfigSupported.bind(Encoder);
+	Encoder.isConfigSupported = async (config) => (
+		denied.some((name) => String(config.codec).startsWith(prefixes[name]))
+			? { supported: false, config }
+			: original(config)
+	);
+};
+if (denied.length > 0) {
+	deny(VideoEncoder);
+	deny(AudioEncoder);
+}
+window.__denied = denied.join(',');
+
+// ?break=avc lets that encoder pass the support check and then fail when it is set up
+const broken = (query.get('break') ?? '').split(',').filter(Boolean);
+if (broken.length > 0) {
+	const configure = VideoEncoder.prototype.configure;
+	VideoEncoder.prototype.configure = function (config) {
+		if (broken.some((name) => String(config.codec).startsWith(prefixes[name]))) {
+			throw new DOMException('Simulated encoder failure.', 'NotSupportedError');
+		}
+		return configure.call(this, config);
+	};
+}
+
+const { exportProject } = await import(/* @vite-ignore */ query.get('module') ?? '/src/export.js');
+
+const logElement = document.getElementById('log');
+const log = (text) => {
+	logElement.textContent += text + '\n';
+	console.log(text);
+};
+
+/** Exported files by case name, until the script has read them. */
+const results = new Map();
+
+// What this browser can encode natively, asked before any export can register the WebAssembly AAC encoder
+const size = { width: 720, height: 1280 };
+window.capabilities = {
+	userAgent: navigator.userAgent,
+	avc: await canEncodeVideo('avc', size).catch(() => false),
+	vp9: await canEncodeVideo('vp9', size).catch(() => false),
+	vp8: await canEncodeVideo('vp8', size).catch(() => false),
+	aacNative: await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: 48000 }).catch(() => false),
+	opus: await canEncodeAudio('opus', { numberOfChannels: 2, sampleRate: 48000 }).catch(() => false),
+};
+
+/**
+ * Runs one export.
+ * spec: { name, tracks, totalFrames, ratio, fps?, sources?: {id: url}, abortAfterMs?, abortReason?, abortFirst? }
+ */
+window.runCase = async (spec) => {
+	const calls = {};
+	const getBlob = async (id) => {
+		calls[id] = (calls[id] ?? 0) + 1;
+		const url = spec.sources?.[id] ?? `/media/${id}.mp4`;
+		const response = await fetch(url);
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status} for ${url}`);
+		}
+		return response.blob();
+	};
+
+	const started = performance.now();
+	const progress = { calls: 0, first: null, last: null, lastLabel: null, monotonic: true, inRange: true, labels: [], at: {} };
+	const onProgress = (fraction, label) => {
+		progress.calls++;
+		progress.first ??= fraction;
+		if (progress.last !== null && fraction < progress.last) {
+			progress.monotonic = false;
+		}
+		if (!(fraction >= 0 && fraction <= 1) || typeof label !== 'string') {
+			progress.inRange = false;
+		}
+		progress.last = fraction;
+		progress.lastLabel = label;
+		if (!progress.labels.includes(label)) {
+			progress.labels.push(label);
+			progress.at[label] = performance.now() - started;
+		}
+	};
+
+	const controller = new AbortController();
+	const reason = spec.abortReason ? new Error(spec.abortReason) : undefined;
+	let abortedAt = null;
+	const abort = () => {
+		abortedAt = performance.now();
+		controller.abort(reason);
+	};
+	if (spec.abortFirst) {
+		abort();
+	} else if (spec.abortAfterMs !== undefined) {
+		setTimeout(abort, spec.abortAfterMs);
+	}
+
+	log(`${spec.name}: start`);
+	try {
+		const result = await exportProject({
+			tracks: spec.tracks,
+			totalFrames: spec.totalFrames,
+			ratio: spec.ratio,
+			...(spec.fps ? { fps: spec.fps } : {}),
+			getBlob,
+			onProgress,
+			signal: controller.signal,
+		});
+		const ms = performance.now() - started;
+		results.set(spec.name, result.blob);
+		log(`${spec.name}: ${result.frames} frames in ${ms.toFixed(0)} ms, ${result.videoCodec}+${result.audioCodec} .${result.ext}`);
+		return {
+			ok: true,
+			ext: result.ext,
+			mime: result.mime,
+			blobType: result.blob.type,
+			width: result.width,
+			height: result.height,
+			frames: result.frames,
+			videoCodec: result.videoCodec,
+			audioCodec: result.audioCodec,
+			size: result.blob.size,
+			ms,
+			framesPerSecond: result.frames / (ms / 1000),
+			progress,
+			calls,
+			profile: result.profile ?? null,
+		};
+	} catch (error) {
+		const ms = performance.now() - started;
+		log(`${spec.name}: rejected after ${ms.toFixed(0)} ms: ${error?.name}: ${error?.message}`);
+		return {
+			ok: false,
+			ms,
+			msAfterAbort: abortedAt === null ? null : performance.now() - abortedAt,
+			errorName: error?.name ?? null,
+			errorMessage: error?.message ?? String(error),
+			isSignalReason: error === controller.signal.reason,
+			aborted: controller.signal.aborted,
+			progress,
+			calls,
+		};
+	}
+};
+
+/** Returns a slice of an exported file as base64, for the script to write to disk. */
+window.readResult = async (name, offset, length) => {
+	const blob = results.get(name);
+	if (!blob) {
+		throw new Error(`No result named ${name}`);
+	}
+	const bytes = new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer());
+	let text = '';
+	for (let i = 0; i < bytes.length; i += 0x8000) {
+		text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+	}
+	return btoa(text);
+};
+
+window.dropResult = (name) => results.delete(name);
+
+window.__ready = true;
+log('ready');
+</script>
+</body>
+</html>

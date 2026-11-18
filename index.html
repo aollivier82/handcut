@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05060c" />
+    <title>Handcut · edit video with your hands</title>
+    <link rel="icon" type="image/svg+xml" href="./mark.svg" />
+  </head>
+  <body>
+    <div id="stage" aria-label="Handcut workspace"></div>
+    <header id="bar">
+      <a class="brand" href="./"><img src="./mark.svg" alt="" /><span>Handcut</span></a>
+      <span class="sub">Edit video with your bare hands</span>
+      <span class="grow"></span>
+      <button id="btn-import" class="ghost">Import videos</button>
+      <button id="btn-export" class="ghost">Export</button>
+      <button id="btn-vr" class="primary">Enter VR</button>
+    </header>
+    <p id="tip">
+      On a computer: click a pill to select it, drag it to move it, drag its ends to trim, scroll to move through the edit,
+      <kbd>S</kbd> or double-click to cut at the line, <kbd>Space</kbd> to play.
+    </p>
+    <div id="toast" role="status"></div>
+    <section id="card" hidden></section>
+    <input type="file" id="files" accept="video/*" multiple hidden />
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
