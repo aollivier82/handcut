@@ -151,6 +151,7 @@ const abortCases = [
 	{ name: 'case4-abort', ratio: '9:16', totalFrames: 180, tracks: stacked, abortAfterMs: 300 },
 	{ name: 'abort-with-reason', ratio: '9:16', totalFrames: 180, tracks: stacked, abortAfterMs: 900, abortReason: 'stopped by the check' },
 	{ name: 'abort-before-start', ratio: '9:16', totalFrames: 180, tracks: stacked, abortFirst: true },
+	{ name: 'abort-mid-render', ratio: '9:16', totalFrames: 180, tracks: stacked, abortAtProgress: 0.4 },
 ];
 
 /** One short export per encoder a browser may lack. `deny` hides those encoders from the page. */
@@ -831,8 +832,14 @@ async function main() {
 			if (spec.abortFirst) {
 				check('nothing was loaded', Object.keys(result.calls).length === 0 && result.progress.calls === 0);
 			}
-			check('no progress after the rejection', result.progress.last === null || result.progress.last < 1,
-				`last ${result.progress.last}`);
+			if (spec.abortAtProgress !== undefined) {
+				check('it was rendering when it was aborted', result.progress.lastLabel === 'Rendering'
+					&& result.progress.last >= spec.abortAtProgress && result.progress.last < 0.97,
+				`progress ${result.progress.last?.toFixed(2)}, ${result.progress.lastLabel}`);
+			}
+			check('no progress after the rejection', result.lateProgressCalls === 0
+				&& (result.progress.last === null || result.progress.last < 1),
+			`last ${result.progress.last}, ${result.lateProgressCalls} calls afterwards`);
 		}
 		if (wanted(afterAbort)) {
 			// Whatever an abort left behind must not get in the way of the next export

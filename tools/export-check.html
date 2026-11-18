@@ -103,6 +103,9 @@ window.runCase = async (spec) => {
 			progress.labels.push(label);
 			progress.at[label] = performance.now() - started;
 		}
+		if (spec.abortAtProgress !== undefined && fraction >= spec.abortAtProgress && abortedAt === null) {
+			abort(); // From inside the callback, in the middle of rendering
+		}
 	};
 
 	const controller = new AbortController();
@@ -151,11 +154,16 @@ window.runCase = async (spec) => {
 		};
 	} catch (error) {
 		const ms = performance.now() - started;
+		const msAfterAbort = abortedAt === null ? null : performance.now() - abortedAt;
 		log(`${spec.name}: rejected after ${ms.toFixed(0)} ms: ${error?.name}: ${error?.message}`);
+		// Nothing may still be rendering once the promise has settled
+		const callsAtRejection = progress.calls;
+		await new Promise((resolve) => setTimeout(resolve, 400));
 		return {
 			ok: false,
 			ms,
-			msAfterAbort: abortedAt === null ? null : performance.now() - abortedAt,
+			msAfterAbort,
+			lateProgressCalls: progress.calls - callsAtRejection,
 			errorName: error?.name ?? null,
 			errorMessage: error?.message ?? String(error),
 			isSignalReason: error === controller.signal.reason,
